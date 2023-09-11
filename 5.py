@@ -7,6 +7,5 @@ for i in range(a//2  ,0,-1):
     print(('.|.'*(2*i-1)).center(b,'-'))
 print('thank u')
 
-
         
     
