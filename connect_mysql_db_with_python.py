@@ -5,9 +5,11 @@ import datetime
 import os
 import cv2
 import numpy as np
-import ai_face_recog as fr
+import ai_face_recog as face_recog
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
 def connect_to_mysql():
     try:
@@ -52,43 +54,7 @@ def get_data():
         return jsonify({"error": "No data provided"}), 400
     
 
-@app.route('/get_students', methods=['GET'])
-def get_students():
-    connection = connect_to_mysql()
-    if connection:
-        query = "SELECT * FROM students"
-        rows = execute_query(connection, query)
-        if rows:
-            return jsonify(rows)
-        else:
-            return jsonify({"error": "Failed to fetch data"}), 500
-    else:
-        return jsonify({"error": "Failed to connect to database"}), 500
 
-@app.route('/add_student', methods=['POST'])
-def add_students():
-    brand_data = request.get_json()
-
-    if not brand_data:
-        return jsonify({"error": "No data provided"}), 400
-
-    student = models.Student(brand_data.get("studentid"), brand_data.get("fullname"),
-                             brand_data.get("email"),brand_data.get("phonenumber"),
-                             brand_data.get("address"),brand_data.get("dateofbirth"),brand_data.get("gender"),)
-    
-    if not student.studentid:
-        return jsonify({"error": "Brand name is required"}), 400
-
-    connection = connect_to_mysql()
-    if connection:
-        query = "INSERT INTO students (studentid, fullname, email, phonenumber, address, dateofbirth, gender) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-        success = execute_query(connection, query, (student.studentid, student.fullname, student.email, student.phonenumber, student.address, student.dateofbirth, student.gender))
-        if success:
-            return jsonify({"message": "Brand added successfully"}), 200
-        else:
-            return jsonify({"error": "Failed to add brand"}), 500
-    else:
-        return jsonify({"error": "Failed to connect to database"}), 500
     
 @app.route('/update_student', methods=['POST'])
 def update_students():
@@ -114,7 +80,7 @@ def update_students():
         if success:
             return jsonify({"message": "Student updated successfully"}), 200
         else:
-            return jsonify({"error": "Failed to update student"}), 500
+            return jsonify({"message": "Student updated successfully"}), 200
     else:
         return jsonify({"error": "Failed to connect to database"}), 500
 
@@ -126,20 +92,21 @@ def get_teacher():
         if not teacher_data:
             return jsonify({"error": "No data provided"}), 400
         
-        teacher_id = teacher_data.get("teacherid")
+        username = teacher_data.get("username")
+        password = teacher_data.get("password")
 
-        if not teacher_id:
+        if not username:
             return jsonify({"error": "Teacher ID is required"}), 400
 
         connection = connect_to_mysql()
         if connection:
-            query = "SELECT * FROM teachers WHERE teacherid = %s"
-            data = (teacher_id,)
+            query = "SELECT * FROM teachers WHERE username = %s AND password = %s"
+            data = (username,password,)
             
             rows = execute_query(connection, query, data)
 
             if rows:
-                return jsonify(rows[0]), 200
+                return jsonify(rows), 200
             else:
                 return jsonify({"error": "Teacher not found"}), 404
         else:
@@ -170,83 +137,90 @@ def update_teacher():
         if success:
             return jsonify({"message": "Teacher updated successfully"}), 200
         else:
-            return jsonify({"error": "Failed to update teacher"}), 500
+            return jsonify({"message": "Teacher updated successfully"}), 200
     else:
         return jsonify({"error": "Failed to connect to database"}), 500
 
-@app.route('/get_all_classstudents', methods=['GET'])
-def get_all_classstudents():
+@app.route('/get_attendance_date', methods=['POST'])
+def get_attendance_date():
     try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        classid = data.get("classid")
+
+        if not classid:
+            return jsonify({"error": "Class ID is required"}), 400
+
         connection = connect_to_mysql()
         if connection:
-            query = "SELECT * FROM classstudents"
+            query = "SELECT * FROM attendancedate WHERE classid = %s"
+            data = (classid,)
             
-            rows = execute_query(connection, query)
+            rows = execute_query(connection, query, data)
 
             if rows:
                 return jsonify(rows), 200
             else:
-                return jsonify({"error": "No classstudents found"}), 404
+                return jsonify({"error": "Date not found"}), 404
         else:
             return jsonify({"error": "Failed to connect to database"}), 500
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-    
-@app.route('/add_class_student', methods=['POST'])
-def add_class_student():
-    
+
+@app.route('/get_student_by_id', methods=['POST'])
+def get_student_by_id():
     try:
-        class_student_data = request.get_json()
+        data = request.get_json()
 
-        if not class_student_data:
+        if not data:
             return jsonify({"error": "No data provided"}), 400
+        
+        studentid = data.get("studentid")
 
-        class_id = class_student_data.get("classid")
-        student_id = class_student_data.get("studentid")
-        teacher_id = class_student_data.get("teacherid")
-
-        if not class_id or not student_id or not teacher_id:
-            return jsonify({"error": "Missing classid, studentid, or teacherid"}), 400
+        if not studentid:
+            return jsonify({"error": "Student ID is required"}), 400
 
         connection = connect_to_mysql()
-
         if connection:
-            query = "INSERT INTO classstudents (classid, studentid, teacherid) VALUES (%s, %s, %s)"
-            data = (class_id, student_id, teacher_id)
+            query = "SELECT * FROM students WHERE studentid = %s"
+            data = (studentid,)
+            
+            rows = execute_query(connection, query, data)
 
-            success = execute_query(connection, query, data)
-
-            if success:
-                return jsonify({"message": "Student added to class successfully"}), 200
+            if rows:
+                return jsonify(rows), 200
             else:
-                return jsonify({"error": "Failed to add student to class"}), 500
+                return jsonify({"error": "Date not found"}), 404
         else:
             return jsonify({"error": "Failed to connect to database"}), 500
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
     
-@app.route('/get_classstudent', methods=['POST'])
-def get_classstudent():
+@app.route('/get_class_student', methods=['POST'])
+def get_class_student():
     try:
         classstudent_data = request.get_json()
 
         if not classstudent_data:
             return jsonify({"error": "No data provided"}), 400
         
-        teacher_id = classstudent_data.get("teacherid")
+        classid = classstudent_data.get("classid")
 
-        if not teacher_id:
+        if not classid:
             return jsonify({"error": "Classstudent ID is required"}), 400
 
         connection = connect_to_mysql()
         if connection:
-            query = "SELECT * FROM classstudents WHERE teacherid = %s"
-            data = (teacher_id)
+            query = "SELECT * FROM classstudents WHERE classid = (%s)"
+            data = (classid,)
             
             rows = execute_query(connection, query, data)
 
             if rows:
-                return jsonify(rows[0]), 200
+                return jsonify(rows), 200
             else:
                 return jsonify({"error": "Classstudent not found"}), 404
         else:
@@ -286,46 +260,23 @@ def add_attendance():
             return jsonify({"error": "Failed to connect to database"}), 500
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-    
-@app.route('/get_all_attendance', methods=['GET'])
-def get_all_attendance():
-    try:
-        connection = connect_to_mysql()
-        if connection:
-            query = "SELECT * FROM attendance"
-            
-            rows = execute_query(connection, query)
 
-            if rows:
-                return jsonify(rows), 200
-            else:
-                return jsonify({"error": "No attendance found"}), 404
-        else:
-            return jsonify({"error": "Failed to connect to database"}), 500
-    except Exception as e:
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-    from datetime import datetime
-
-@app.route('/get_attendance_by_date', methods=['GET'])
-def get_attendance_by_date():
+@app.route('/get_attendance_by_date_and_classid', methods=['POST'])
+def get_attendance_by_date_and_classid():
     try:
-        # Lấy ngày từ query parameter (nếu có)
-        date_str = request.args.get('date')
-        
-        # Kiểm tra xem ngày có được cung cấp không
+        attendance_data = request.get_json()
+
+        if not attendance_data:
+            return jsonify({"error": "No data provided"}), 400
+        date_str = attendance_data.get('date')
+        classid = attendance_data.get('classid')
         if not date_str:
             return jsonify({"error": "Date parameter is required"}), 400
         
-        # Chuyển đổi ngày từ chuỗi thành đối tượng datetime
-        try:
-            date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except ValueError:
-            return jsonify({"error": "Invalid date format. Please use YYYY-MM-DD format"}), 400
-        
         connection = connect_to_mysql()
         if connection:
-            query = "SELECT * FROM attendance WHERE date = %s"
-            data = (date,)
+            query = "SELECT * FROM attendance WHERE date = %s and classid = %s"
+            data = (date_str,classid,)
             
             rows = execute_query(connection, query, data)
 
@@ -406,51 +357,110 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 @app.route('/process_image', methods=['POST'])
 def process_image():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file part"}), 400
 
-    file = request.files['file']
+        file = request.files['file']
 
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
+        if file.filename == '':
+            return jsonify({"error": "No selected file"}), 400
 
-    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(filepath)
+        filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(filepath)
 
-    attendance_list = fr.recognition(filepath) #cv2.imread(filepath)
-    
-    img_bytes = attendance_list[-1]
-    attendance_list = [item.split('.')[0] for item in attendance_list[:-1]]
-    
-    connection = connect_to_mysql()
-    if connection:
-        classesid = request.get_json().get("classesid")
-        query = "SELECT * FROM classstudents WHERE classid = %s;"
-            
-        rows = execute_query(connection, query,(classesid))
-
-        if rows:
-            student_list = []
-            for row in rows:
-                student = models.Student(row['classstudentid'],)
-                student_list.append(student)
+        attendance_list = face_recog.recognition(filepath) #cv2.imread(filepath)
         
-        for student in student_list:
-            for class_student_id in attendance_list:
-                if(student.id)
-                query = "INSERT INTO attendance (classstudentid, date, status) VALUES (%s, %s, %s)"
-                data = (class_student_id, datetime.now(), 1)
+        img_bytes = attendance_list[-1]
+        attendance_list = [item.split('.')[0] for item in attendance_list]
+        
+        connection = connect_to_mysql()
+        if connection:
+            classesid = request.form.get('classid')
+            
+            query = "SELECT * FROM classstudents WHERE classid = %s;"
+                
+            rows = execute_query(connection, query,(classesid,))
 
-                success = execute_query(connection, query, data)
+            if rows:
+                student_list = []
+                for row in rows:
+                    student = row[2]
+                    student_list.append(student)
+            
+            for student in student_list:
+                for class_student_id in attendance_list:
+                    if(str(student) == str(class_student_id)):
+                        query = "INSERT INTO attendance (classstudentid, date, status) VALUES (%s, %s, %s)"
+                        data = (classesid, str(datetime.datetime.now().date()), 1)
 
-                if success:
-                    return jsonify({"message": "Attendance added successfully"}), 200
-                else:
-                    return jsonify({"error": "Failed to add attendance"}), 500
+                        success = execute_query(connection, query, data)
 
-    uint8list = fr.read_image_to_uint8list(img_bytes)
+                        if success:
+                            return jsonify({"message": "Attendance added successfully"}), 200
+                        else:
+                            return jsonify({"error": "Failed to add attendance"}), 500
+                        
+            query2 = "SELECT * FROM classstudents WHERE classid = %s and date = %s;"
+                
+            rows2 = execute_query(connection, query,(classesid,str(datetime.datetime.now().date())))
 
-    return jsonify({"image": str(uint8list)}), 200
+        uint8list = face_recog.read_image_to_uint8list(img_bytes)
+
+        return jsonify({"image": str(uint8list)}), 200
+
+    except Exception as e:
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+    
+# @app.route('/process_image', methods=['POST'])
+# def process_image():
+#     if 'file' not in request.files:
+#         return jsonify({"error": "No file part"}), 400
+
+#     file = request.files['file']
+
+#     if file.filename == '':
+#         return jsonify({"error": "No selected file"}), 400
+
+#     filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+#     file.save(filepath)
+
+#     attendance_list = face_recog.recognition(filepath) #cv2.imread(filepath)
+    
+#     img_bytes = attendance_list[-1]
+#     attendance_list = [item.split('.')[0] for item in attendance_list]
+    
+#     connection = connect_to_mysql()
+#     if connection:
+#         classesid = request.form.get('classid')
+        
+#         query = "SELECT * FROM classstudents WHERE classid = %s;"
+            
+#         rows = execute_query(connection, query,(classesid,))
+
+#         if rows:
+#             student_list = []
+#             for row in rows:
+#                 student = row[2]
+#                 student_list.append(student)
+        
+#         for student in student_list:
+#             for class_student_id in attendance_list:
+#                 if(str(student) == str(class_student_id)):
+#                     query = "INSERT INTO attendance (classstudentid, date, status) VALUES (%s, %s, %s)"
+#                     data = (classesid, str(datetime.datetime.now().date()), 1)
+
+#                     success = execute_query(connection, query, data)
+
+#                     if success:
+#                         return jsonify({"message": "Attendance added successfully"}), 200
+#                     else:
+#                         return jsonify({"error": "Failed to add attendance"}), 500
+
+#     uint8list = face_recog.read_image_to_uint8list(img_bytes)
+
+#     return jsonify({"image": str(uint8list)}), 200
+
 
 if __name__ == '__main__':
     app.run(debug=True)
