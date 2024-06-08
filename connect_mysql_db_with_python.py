@@ -1,4 +1,5 @@
-from flask import Flask, jsonify, request
+import io
+from flask import Flask, jsonify, request, send_file
 import mysql.connector
 import models
 import datetime
@@ -169,6 +170,35 @@ def get_attendance_date():
             return jsonify({"error": "Failed to connect to database"}), 500
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+    
+@app.route('/get_all_attendance', methods=['POST'])
+def get_all_attendance():
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        classid = data.get("classid")
+
+        if not classid:
+            return jsonify({"error": "Class ID is required"}), 400
+
+        connection = connect_to_mysql()
+        if connection:
+            query = "SELECT * FROM attendance WHERE classid = %s"
+            data = (classid,)
+            
+            rows = execute_query(connection, query, data)
+
+            if rows:
+                return jsonify(rows), 200
+            else:
+                return jsonify({"error": "Date not found"}), 404
+        else:
+            return jsonify({"error": "Failed to connect to database"}), 500
+    except Exception as e:
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 @app.route('/get_student_by_id', methods=['POST'])
 def get_student_by_id():
@@ -289,33 +319,33 @@ def get_attendance_by_date_and_classid():
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
-@app.route('/update_attendance', methods=['PUT'])
+@app.route('/update_attendance', methods=['POST'])
 def update_attendance():
     attendance_data = request.get_json()
 
     if not attendance_data:
         return jsonify({"error": "No data provided"}), 400
 
-    class_student_id = attendance_data.get("classstudentid")
+    student_id = attendance_data.get("studentid")
+    class_id = attendance_data.get("classid")
     date = attendance_data.get("date")
     status = attendance_data.get("status")
-    attendance_id = attendance_data.get("id")
     
-    if not class_student_id or not date or not status:
-        return jsonify({"error": "Missing classstudentid, date, or status"}), 400
+    # if not student_id or not date or not status:
+    #     return jsonify({"error": "Missing student_id, date, or status"}), 400
 
     try:
         connection = connect_to_mysql()
         if connection:
-            query = "UPDATE attendance SET classstudentid = %s, date = %s, status = %s WHERE id = %s"
-            data = (class_student_id, date, status, attendance_id)
+            query = "UPDATE attendance SET status = %s WHERE studentid = %s and date = %s and classid = %s"
+            data = (status,student_id, date, class_id)
 
             success = execute_query(connection, query, data)
 
             if success:
                 return jsonify({"message": "Attendance updated successfully"}), 200
             else:
-                return jsonify({"error": "Failed to update attendance"}), 500
+                return jsonify({"message": "Attendance updated successfully"}), 200
         else:
             return jsonify({"error": "Failed to connect to database"}), 500
     except Exception as e:
@@ -358,25 +388,21 @@ if not os.path.exists(UPLOAD_FOLDER):
 @app.route('/process_image', methods=['POST'])
 def process_image():
     try:
-        if 'file' not in request.files:
-            return jsonify({"error": "No file part"}), 400
-
-        file = request.files['file']
-
-        if file.filename == '':
-            return jsonify({"error": "No selected file"}), 400
-
-        filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+        
+        file = request.files['image']
+        classesid = request.form.get('classid')
+        
+        filepath = os.path.join(UPLOAD_FOLDER, f"{str(datetime.datetime.now().date())}_{classesid}_raw.jpg")
         file.save(filepath)
 
-        attendance_list = face_recog.recognition(filepath) #cv2.imread(filepath)
+        attendance_list = face_recog.recognition(filepath, classesid) #cv2.imread(filepath)
         
         img_bytes = attendance_list[-1]
         attendance_list = [item.split('.')[0] for item in attendance_list]
         
         connection = connect_to_mysql()
         if connection:
-            classesid = request.form.get('classid')
+            date_now = str(datetime.datetime.now().date())
             
             query = "SELECT * FROM classstudents WHERE classid = %s;"
                 
@@ -387,31 +413,71 @@ def process_image():
                 for row in rows:
                     student = row[2]
                     student_list.append(student)
+                    
+            for student in student_list:
+                query = "INSERT INTO attendance (studentid, classid, date, status) VALUES (%s, %s, %s, %s)"
+                data = (student, classesid, date_now, 0)
+
+                success = execute_query(connection, query, data)
+                if success:
+                    continue
+                else:
+                    continue
             
             for student in student_list:
                 for class_student_id in attendance_list:
                     if(str(student) == str(class_student_id)):
-                        query = "INSERT INTO attendance (classstudentid, date, status) VALUES (%s, %s, %s)"
-                        data = (classesid, str(datetime.datetime.now().date()), 1)
+                        query = "UPDATE attendance SET status = %s WHERE studentid = %s AND classid = %s AND date = %s"
+                        data = (1, class_student_id, classesid, date_now,)
 
                         success = execute_query(connection, query, data)
 
                         if success:
-                            return jsonify({"message": "Attendance added successfully"}), 200
+                            continue
+                            #return jsonify({"message": "Attendance added successfully"}), 200
                         else:
-                            return jsonify({"error": "Failed to add attendance"}), 500
-                        
-            query2 = "SELECT * FROM classstudents WHERE classid = %s and date = %s;"
+                            continue
+            query3 = "INSERT INTO attendancedate (classid, date) VALUES (%s, %s)"
+            data3 = ( classesid, date_now,)
+            rows3 = execute_query(connection, query3,data3)
+
+            success = execute_query(connection, query, data)            
+            query2 = "SELECT * FROM attendance WHERE studentid = %s AND classid = %s AND date = %s"
                 
-            rows2 = execute_query(connection, query,(classesid,str(datetime.datetime.now().date())))
+            rows2 = execute_query(connection, query2,(class_student_id, classesid, date_now,))
 
-        uint8list = face_recog.read_image_to_uint8list(img_bytes)
-
-        return jsonify({"image": str(uint8list)}), 200
+        #uint8list = face_recog.read_image_to_uint8list(img_bytes)
+            if rows2:
+                return jsonify(rows), 200
+            else:
+                return jsonify({"failed"}), 200
 
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-    
+
+@app.route('/get_image', methods=['POST'])
+def get_image():
+    try:
+        request_data = request.get_json()
+        
+        classid = request_data.get("classid")
+        date = request_data.get("date")
+        file_name = f"{date}_{classid}.jpg"
+        file_path = UPLOAD_FOLDER + file_name
+        
+        with open(file_path, 'rb') as img_file: 
+            img_bytes = img_file.read()
+            
+        #vars asdasd = send_file( io.BytesIO(img_bytes), mimetype='image/jpg', as_attachment=False,)
+        return send_file(
+            io.BytesIO(img_bytes),
+            mimetype='image/jpg',
+            as_attachment=False,
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # @app.route('/process_image', methods=['POST'])
 # def process_image():
 #     if 'file' not in request.files:
