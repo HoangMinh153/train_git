@@ -16,7 +16,7 @@ def encode_images(images):
     return encode_list
 
 def detection():
-    path = AIconfig.path
+    path = "E:\\test\\AI_Face\\5"
     images = []
     
     my_list = os.listdir(path)
@@ -26,7 +26,7 @@ def detection():
         
 
     encode_list_known = encode_images(images)
-    json_file_path = "encode_list_known.json"
+    json_file_path = "encode_list_known2.json"
 
     encode_list_known_jsonable = [encode.tolist() for encode in encode_list_known]
 
@@ -36,16 +36,16 @@ def detection():
     print("Mã hóa thành công")
     print(len(encode_list_known))
 
-def recognition(image_path):
+def recognition(image_path, classid):
     
     attendance = []
-    path = AIconfig.path
+    path = f"E:\\test\\AI_Face\\{classid}"
     class_names = []
     my_list = os.listdir(path)
     for cl in my_list:
         class_names.append(os.path.splitext(cl)[0])
         
-    json_file_path = "encode_list_known.json"
+    json_file_path = f"E:\\test\\AI_Face\\{classid}.json"
 
     encode_list_known = []
 
@@ -68,13 +68,13 @@ def recognition(image_path):
         face_distances = face_recognition.face_distance(encode_list_known, encode_face)
         match_index = np.argmin(face_distances)
 
-        if face_distances[match_index] < 0.40:
+        if face_distances[match_index] < 0.35:
             name = class_names[match_index].upper()
             attendance.append(name)
-            print("Xác định thành công:", name)
+            #print("Xác định thành công:", name)
         else:
             name = "Unknown"
-            print("Không nhận dạng được.")
+            #print("Không nhận dạng được.")
 
         top, right, bottom, left = face_loc
         cv2.rectangle(img, (left, top), (right, bottom), (0, 255, 0), 2)
@@ -83,42 +83,44 @@ def recognition(image_path):
         if name == "Unknown":
             cv2.rectangle(img, (left, top), (right, bottom), (0, 0, 255), 2)
 
-    screen_width = 1600  
-    screen_height = 900  
+    # screen_width = 1600  
+    # screen_height = 900  
 
-    img_height, img_width, _ = img.shape
-    ratio = min(screen_width / img_width, screen_height / img_height)
-    new_width = int(img_width * ratio)
-    new_height = int(img_height * ratio)
+    # img_height, img_width, _ = img.shape
+    # ratio = min(screen_width / img_width, screen_height / img_height)
+    # new_width = int(img_width * ratio)
+    # new_height = int(img_height * ratio)
 
-    img_resized = cv2.resize(img, (new_width, new_height))
+    # img_resized = cv2.resize(img, (new_width, new_height))
 
-    x_offset = (screen_width - new_width) // 2
-    y_offset = (screen_height - new_height) // 2
+    # x_offset = (screen_width - new_width) // 2
+    # y_offset = (screen_height - new_height) // 2
 
-    result_img = np.zeros((screen_height, screen_width, 3), dtype=np.uint8)
+    # result_img = np.zeros((screen_height, screen_width, 3), dtype=np.uint8)
 
-    result_img[y_offset:y_offset+new_height, x_offset:x_offset+new_width] = img_resized
+    # result_img[y_offset:y_offset+new_height, x_offset:x_offset+new_width] = img_resized
 
-    cv2.imshow('Recognition Result', result_img)
+    #cv2.imshow('Recognition Result', result_img)
 
     current_date = datetime.now().strftime("%Y-%m-%d")
 
-    image_name = os.path.basename(image_path)
-    output_name = f"{current_date}_{image_name}"
+    #image_name = os.path.basename(image_path)
+    output_name = f"{current_date}_{classid}.jpg"
 
     save_dir = "E:\\test\\AI_Face\\pic\\"
 
     output_path = os.path.join(save_dir, output_name)
-
-    cv2.imwrite(output_path, result_img)
+    #img.save(output_path)
+    os.chdir(save_dir) 
+    cv2.imwrite(output_name, img)
     print(f"Ảnh đã được lưu tại: {output_path}")
     
-    attendance.append(output_path)
+    #attendance.append(output_name)
 
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
     
+    # return read_image_to_uint8list(output_path)
     return attendance
 
 def read_image_to_uint8list(image_path):
@@ -133,6 +135,6 @@ def read_image_to_uint8list(image_path):
         return None
 
 if __name__ == "__main__":
-    #detection()
-    image_path = "E:\\test\\AI_Face\\pic\\LAP01487.jpg"
-    recognition(image_path)
+    detection()
+    #image_path = "E:\\test\\AI_Face\\pic\\DSC_9594.jpg"
+    #print(recognition(image_path))
